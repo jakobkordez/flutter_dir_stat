@@ -1,91 +1,109 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+
+import 'package:flutter_dir_stat/src/fs_walker_entity.dart';
 
 class FsWalker {
-  static Future<FsWalkerDir> walk(Directory dir) async {
-    // print(dir.path);
-    final dirs = <Future<FsWalkerDir>>[];
-    final files = <Future<FsWalkerFile>>[];
+  late final Isolate _isolate;
+  late final ReceivePort _receivePort;
+  SendPort? _sendPort;
 
-    try {
-      await for (final entity in dir.list(followLinks: false)) {
-        if (entity is Directory) {
-          dirs.add(walk(entity));
-        } else if (entity is File) {
-          files.add(entity
-              .length()
-              .catchError((e) => 0)
-              .then((size) => FsWalkerFile(name: entity.path, size: size)));
-        }
+  final Completer<FsWalkerDir> _completer = Completer();
+  Future<FsWalkerDir> get result => _completer.future;
+
+  /// Spawns an isolate to walk the directory.
+  FsWalker(Directory dir) {
+    _receivePort = ReceivePort();
+    Isolate.spawn(_walk, _IsolateParams(_receivePort.sendPort, dir))
+        .then((isolate) {
+      print('Spawned isolate');
+      return _isolate = isolate;
+    });
+
+    _receivePort.listen((message) {
+      if (message is FsWalkerDir) {
+        print('Got result');
+        _completer.complete(message);
+        _receivePort.close();
+        _isolate.kill();
+      } else if (message is SendPort) {
+        print('Got send port');
+        _sendPort = message;
       }
-    } catch (e) {}
+    });
+  }
 
-    final d = await Future.wait(dirs);
-    d.sort((a, b) => b.size - a.size);
-    final f = await Future.wait(files);
-    f.sort((a, b) => b.size - a.size);
+  void cancel() {
+    if (!_completer.isCompleted) {
+      print('Cancelling isolate');
+      _completer.completeError(Exception('Cancelled'));
+    }
+    _sendPort?.send(null);
+    _receivePort.close();
+    _isolate.kill();
+  }
+
+  static Future<void> _walk(_IsolateParams params) async {
+    final receivePort = ReceivePort();
+    params.sendPort.send(receivePort.sendPort);
+
+    final res = await _walkDir(params.dir, receivePort.asBroadcastStream());
+
+    params.sendPort.send(res);
+  }
+
+  static Future<FsWalkerDir> _walkDir(
+      Directory dir, Stream<void> receivePort) async {
+    // print(dir.path);
+    final dirs = <FsWalkerDir>[];
+    final files = <FsWalkerFile>[];
+
+    bool cancelled = false;
+    receivePort.listen((message) {
+      print('Got cancelled');
+      cancelled = true;
+    });
+
+    final stream = dir.list(followLinks: false).handleError((e) {});
+    await for (final entity in stream) {
+      if (cancelled) {
+        print('Breaking for cancelled');
+        break;
+      }
+      if (entity is Directory) {
+        dirs.add(await _walkDir(entity, receivePort));
+      } else if (entity is File) {
+        final path = entity.path.replaceAll("\\", "/");
+        files.add(await entity
+            .length()
+            .catchError((e) => 0)
+            .then((size) => FsWalkerFile(path: path, size: size)));
+      }
+    }
 
     String p = dir.path.replaceAll("\\", "/");
     if (!p.endsWith("/")) p = "$p/";
 
     return FsWalkerDir(
-      name: p,
-      dirs: d,
-      files: f,
+      path: p,
+      dirs: dirs..sort((a, b) => b.size - a.size),
+      files: files..sort((a, b) => b.size - a.size),
     );
   }
 }
 
-class FsWalkerDir {
-  final String name;
-  final List<FsWalkerDir> dirs;
-  final List<FsWalkerFile> files;
+class _IsolateParams {
+  final SendPort sendPort;
+  final Directory dir;
 
-  FsWalkerDir({required this.name, required this.dirs, required this.files});
+  _IsolateParams(this.sendPort, this.dir);
+}
 
-  late final int size = dirs.fold(0, (acc, dir) => acc + dir.size) +
-      files.fold(0, (acc, file) => acc + file.size);
-
-  @override
-  String toString({int maxDepth = 255, int minSize = 0}) {
-    return _toString(0, maxDepth, minSize);
-  }
-
-  String _toString(int depth, int maxDepth, int minSize) {
-    final indent = " " * depth;
-    String result =
-        '${_getFormattedSize(size).padLeft(7)}  $indent${name.substring(depth)}\n';
-    if (maxDepth > 0) {
-      result += dirs
-          .where((dir) => dir.size >= minSize)
-          .map((dir) => dir._toString(name.length, maxDepth - 1, minSize))
-          .join();
-      result += files
-          .where((file) => file.size >= minSize)
-          .map((file) => file._toString(name.length))
-          .join();
+extension CompleterX<T> on Completer<T> {
+  void tryComplete(T value) {
+    if (!isCompleted) {
+      complete(value);
     }
-    return result;
   }
-}
-
-class FsWalkerFile {
-  final String name;
-  final int size;
-
-  FsWalkerFile({required this.name, required this.size});
-
-  String _toString(int depth) {
-    String indent = " " * depth;
-    return '${_getFormattedSize(size).padLeft(7)}  $indent${name.substring(depth)}\n';
-  }
-}
-
-String _getFormattedSize(int size) {
-  const units = [" B", "kB", "MB", "GB"];
-  int unitIndex = 0;
-  while (size >= 1024) {
-    size ~/= 1024;
-    unitIndex++;
-  }
-  return "$size ${units[unitIndex]}";
 }
