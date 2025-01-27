@@ -73,40 +73,89 @@ class _OverviewPageState extends State<OverviewPage> {
         }
 
         final axis = height > width ? Axis.vertical : Axis.horizontal;
-        final main = height > width ? height : width;
+        final size = eList.fold(0, (p, e) => p + e.size);
 
-        int size = eList.fold(0, (p, e) => p + e.size);
+        const maxRatio = 2.5;
+        final minRatio = 1 / maxRatio;
+
+        final main = height > width ? height : width;
+        final cross = height > width ? width : height;
 
         int i = eList.length;
-        while (i > 0) {
+        while (i > 1) {
           // Width/height of the last element
-          final w = (main - i + 1) * eList[i - 1].size / size;
-          if (w >= 1) break;
-          size -= eList[i - 1].size;
+          final w = (main - i) * eList[i - 1].size / size;
+          // if (w >= 5) break;
+          final ratio = w / cross;
+          if (ratio > minRatio) break;
           --i;
         }
 
-        if (i == 0) {
-          return Container(color: Colors.black);
+        if (eList.length - i < 8 || cross <= 4) {
+          i = eList.length;
+        }
+
+        if (eList.length == i) {
+          int t = size;
+          while (i > 0) {
+            final w = (main - i) * eList[i - 1].size / t;
+            if (w > 3) break;
+            t -= eList[i - 1].size;
+            --i;
+          }
+          eList = eList.sublist(0, i);
+        }
+
+        Widget? remaining;
+        if (eList.length != i) {
+          final remainingSize = eList.sublist(i).fold(0, (p, e) => p + e.size);
+          int rollSum = 0;
+          int remainSum = remainingSize;
+
+          int j = i;
+          while (j < eList.length - 1 && rollSum < remainSum) {
+            rollSum += eList[j].size;
+            remainSum -= eList[j].size;
+            ++j;
+          }
+
+          remaining = Expanded(
+            flex: remainingSize,
+            child: Flex(
+              direction:
+                  axis == Axis.vertical ? Axis.horizontal : Axis.vertical,
+              spacing: 1,
+              children: [
+                Expanded(
+                  flex: rollSum,
+                  child: _drawTree(eList.sublist(i, j), maxDepth),
+                ),
+                Expanded(
+                  flex: remainSum,
+                  child: _drawTree(eList.sublist(j), maxDepth),
+                ),
+              ],
+            ),
+          );
         }
 
         return Flex(
           direction: axis,
           spacing: 1,
-          children: eList
-              .sublist(0, i)
-              .map(
-                (c) => Expanded(
-                  flex: c.size,
-                  child: c is FsWalkerDir
-                      ? _drawTree(c.children, maxDepth - 1)
-                      : Container(
-                          color: _fileColors[c.name.split('.').last.hashCode %
-                              _fileColors.length],
-                        ),
+          children: [
+            ...eList.sublist(0, i).map(
+                  (c) => Expanded(
+                    flex: c.size,
+                    child: c is FsWalkerDir
+                        ? _drawTree(c.children, maxDepth - 1)
+                        : Container(
+                            color: _fileColors[c.name.split('.').last.hashCode %
+                                _fileColors.length],
+                          ),
+                  ),
                 ),
-              )
-              .toList(),
+            if (remaining != null) remaining
+          ],
         );
 
         // final cross = height > width ? width : height;
