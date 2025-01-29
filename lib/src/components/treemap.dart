@@ -60,7 +60,7 @@ class TreemapRenderBox extends RenderBox {
         continue;
       }
 
-      if (width < 2 || height < 2) {
+      if (width < 1 || height < 1) {
         final paint = Paint()..color = Colors.black;
         context.canvas.drawRect(rect, paint);
         continue;
