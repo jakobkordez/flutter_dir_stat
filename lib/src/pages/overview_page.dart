@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dir_stat/src/components/treemap.dart';
 import 'package:flutter_dir_stat/src/fs_walker_entity.dart';
 import 'package:flutter_dir_stat/src/spacing.dart';
 
@@ -54,7 +55,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: _drawTree(widget.dir.children),
+                    child: Treemap(widget.dir),
                   ),
                 ),
               ],
@@ -62,177 +63,6 @@ class _OverviewPageState extends State<OverviewPage> {
           ),
         ),
       );
-
-  Widget _drawTree(List<FsWalkerEntity> eList, [int maxDepth = 999]) =>
-      LayoutBuilder(builder: (_, constraints) {
-        final height = constraints.maxHeight;
-        final width = constraints.maxWidth;
-
-        if (maxDepth < 1 || height < 1 || width < 1 || eList.isEmpty) {
-          return Container(color: Colors.black);
-        }
-
-        final axis = height > width ? Axis.vertical : Axis.horizontal;
-        final size = eList.fold(0, (p, e) => p + e.size);
-
-        const maxRatio = 2.5;
-        final minRatio = 1 / maxRatio;
-
-        final main = height > width ? height : width;
-        final cross = height > width ? width : height;
-
-        int i = eList.length;
-        while (i > 1) {
-          // Width/height of the last element
-          final w = (main - i) * eList[i - 1].size / size;
-          // if (w >= 5) break;
-          final ratio = w / cross;
-          if (ratio > minRatio) break;
-          --i;
-        }
-
-        if (eList.length - i < 8 || cross <= 4) {
-          i = eList.length;
-        }
-
-        if (eList.length == i) {
-          int t = size;
-          while (i > 0) {
-            final w = (main - i) * eList[i - 1].size / t;
-            if (w > 3) break;
-            t -= eList[i - 1].size;
-            --i;
-          }
-          eList = eList.sublist(0, i);
-        }
-
-        Widget? remaining;
-        if (eList.length != i) {
-          final remainingSize = eList.sublist(i).fold(0, (p, e) => p + e.size);
-          int rollSum = 0;
-          int remainSum = remainingSize;
-
-          int j = i;
-          while (j < eList.length - 1 && rollSum < remainSum) {
-            rollSum += eList[j].size;
-            remainSum -= eList[j].size;
-            ++j;
-          }
-
-          remaining = Expanded(
-            flex: remainingSize,
-            child: Flex(
-              direction:
-                  axis == Axis.vertical ? Axis.horizontal : Axis.vertical,
-              spacing: 1,
-              children: [
-                Expanded(
-                  flex: rollSum,
-                  child: _drawTree(eList.sublist(i, j), maxDepth),
-                ),
-                Expanded(
-                  flex: remainSum,
-                  child: _drawTree(eList.sublist(j), maxDepth),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return Flex(
-          direction: axis,
-          spacing: 1,
-          children: [
-            ...eList.sublist(0, i).map(
-                  (c) => Expanded(
-                    flex: c.size,
-                    child: c is FsWalkerDir
-                        ? _drawTree(c.children, maxDepth - 1)
-                        : Container(
-                            color: _fileColors[c.name.split('.').last.hashCode %
-                                _fileColors.length],
-                          ),
-                  ),
-                ),
-            if (remaining != null) remaining
-          ],
-        );
-
-        // final cross = height > width ? width : height;
-        // const maxRatio = 5;
-        // final minRatio = 1 / maxRatio;
-
-        // final mainArr = <FsWalkerEntity>[];
-        // int remainingMain = eList.fold(0, (p, e) => p + e.size);
-        // for (var e in eList) {
-        //   final width = e.size / remainingMain * main;
-        //   final ratio = width / cross;
-        //   if (eList.length - mainArr.length > 1 &&
-        //       (ratio < minRatio || ratio > maxRatio)) break;
-        //   mainArr.add(e);
-        //   remainingMain -= e.size;
-        //   main -= width + 1;
-        // }
-
-        // final cross1 = <FsWalkerEntity>[];
-        // int cross1Size = 0;
-        // int remainingCross = remainingMain;
-        // for (var e in eList.sublist(mainArr.length)) {
-        //   if (eList.length - mainArr.length - cross1.length > 1 &&
-        //       cross1Size > remainingCross) break;
-        //   cross1.add(e);
-        //   cross1Size += e.size;
-        //   remainingCross -= e.size;
-        // }
-
-        // if (mainArr.isEmpty && cross1.isEmpty) {
-        //   mainArr.addAll(eList);
-        //   remainingMain = 0;
-        //   remainingCross = 0;
-        // }
-
-        // return Flex(
-        //   direction: axis,
-        //   spacing: 1,
-        //   children: [
-        //     ...mainArr.map(
-        //       (c) => Expanded(
-        //         flex: c.size,
-        //         child: c is FsWalkerDir
-        //             ? _drawTree(c.children, maxDepth - 1)
-        //             : Container(
-        //                 color: _fileColors[c.name.split('.').last.hashCode %
-        //                     _fileColors.length],
-        //               ),
-        //       ),
-        //     ),
-        //     if (remainingMain > 0)
-        //       Expanded(
-        //         flex: remainingMain,
-        //         child: Flex(
-        //           direction:
-        //               axis == Axis.vertical ? Axis.horizontal : Axis.vertical,
-        //           spacing: 1,
-        //           children: [
-        //             if (cross1.isNotEmpty)
-        //               Expanded(
-        //                 flex: cross1Size,
-        //                 child: _drawTree(cross1, maxDepth),
-        //               ),
-        //             if (remainingCross > 0)
-        //               Expanded(
-        //                 flex: remainingCross,
-        //                 child: _drawTree(
-        //                   eList.sublist(mainArr.length + cross1.length),
-        //                   maxDepth,
-        //                 ),
-        //               ),
-        //           ],
-        //         ),
-        //       )
-        //   ],
-        // );
-      });
 
   Widget _buildList() => ListView.builder(
         itemExtent: 32,
@@ -284,15 +114,3 @@ class _OverviewPageState extends State<OverviewPage> {
         },
       );
 }
-
-final _fileColors = [
-  Colors.blue.shade400,
-  Colors.green.shade400,
-  Colors.red.shade400,
-  Colors.orange.shade400,
-  Colors.purple.shade400,
-  Colors.pink.shade400,
-  Colors.teal.shade400,
-  Colors.indigo.shade400,
-  Colors.deepOrange.shade400,
-];
