@@ -55,7 +55,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: Treemap(widget.dir),
+                    child: TreeMap(widget.dir),
                   ),
                 ),
               ],

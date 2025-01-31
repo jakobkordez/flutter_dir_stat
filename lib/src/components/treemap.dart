@@ -3,100 +3,167 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_dir_stat/src/fs_walker_entity.dart';
 
-class Treemap extends LeafRenderObjectWidget {
+class TreeMap extends StatelessWidget {
   final FsWalkerDir dir;
 
-  const Treemap(this.dir, {super.key});
+  const TreeMap(this.dir, {super.key});
 
   @override
-  RenderObject createRenderObject(BuildContext context) {
-    return TreemapRenderBox(dir);
-  }
-
-  @override
-  void updateRenderObject(BuildContext context, TreemapRenderBox renderObject) {
-    renderObject.dir = dir;
-  }
+  Widget build(BuildContext context) => CustomPaint(
+        painter: TreeMapPainter(dir),
+        size: Size.infinite,
+      );
 }
 
-class TreemapRenderBox extends RenderBox {
+class TreeMapPainter extends CustomPainter {
   FsWalkerDir dir;
 
-  TreemapRenderBox(this.dir);
+  TreeMapPainter(this.dir);
 
   @override
-  bool get sizedByParent => true;
-
-  @override
-  void performResize() {
-    size = constraints.biggest;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
   }
 
   @override
-  Size computeDryLayout(covariant BoxConstraints constraints) {
-    return constraints.biggest;
-  }
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawRect(rect, Paint()..color = Colors.grey.shade200);
 
-  @override
-  void paint(PaintingContext context, Offset offset) {
     final queue = Queue<QueueEntry>();
-    queue.add(QueueEntry(
-      Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height),
-      dir,
-    ));
+    queue.add(QueueEntry(rect, dir));
 
     while (queue.isNotEmpty) {
       final entry = queue.removeFirst();
-      final rect = entry.rect;
+      Rect rect = entry.rect;
       final entity = entry.entity;
+
+      if (rect.hasNaN) continue;
 
       final width = rect.width;
       final height = rect.height;
+      if (width < 1 || height < 1) continue;
 
       if (entity is FsWalkerFile) {
         final ext = entity.name.split('.').last;
-        final paint = Paint()..color = colors[ext.hashCode % colors.length];
-        context.canvas.drawRect(rect, paint);
+        final paint = Paint()
+          ..color = colors[ext.hashCode % colors.length].withAlpha(0xe0);
+        canvas.drawRect(rect.deflate(.5), paint);
         continue;
       }
 
-      if (width < 1 || height < 1) {
+      if (entity is! FsWalkerDir) {
         final paint = Paint()..color = Colors.black;
-        context.canvas.drawRect(rect, paint);
+        canvas.drawRect(rect, paint);
         continue;
       }
 
-      double main = width > height ? width : height;
+      int totalSize = entity.children.fold(0, (t, e) => t + e.size);
 
-      var children = (entity as FsWalkerDir).children;
+      int i = 0;
+      final children = entity.children;
+      while (i < children.length && rect.width > 1 && rect.height > 1) {
+        final width = rect.width;
+        final height = rect.height;
 
-      int i = children.length;
-      while (i > 0 && (main - i + 1) * children[i - 1].size / entity.size < 1) {
-        --i;
-      }
+        final main = width > height ? width : height;
+        final cross = width > height ? height : width;
 
-      if (i == 0) {
-        final paint = Paint()..color = Colors.black;
-        context.canvas.drawRect(rect, paint);
-        continue;
-      }
+        final left = <FsWalkerEntity>[children[i]];
+        int leftSize = children[i].size;
+        int rightSize = totalSize - leftSize;
+        i++;
 
-      children = children.sublist(0, i);
-      int total = children.fold(0, (p, e) => p + e.size);
+        double best = double.infinity;
+        while (i < children.length) {
+          final child = children[i];
 
-      Offset o = Offset(rect.left, rect.top);
-      for (final child in children) {
-        --i;
-        final w = (main - i) * child.size / total;
-        main -= w + 1;
-        total -= child.size;
-        if (width > height) {
-          queue.add(QueueEntry(Rect.fromLTWH(o.dx, o.dy, w, height), child));
-          o = Offset(o.dx + w + 1, o.dy);
-        } else {
-          queue.add(QueueEntry(Rect.fromLTWH(o.dx, o.dy, width, w), child));
-          o = Offset(o.dx, o.dy + w + 1);
+          // Check aspect if placed in same col/row
+          final h = cross * child.size / (child.size + leftSize);
+          final w = main * (child.size + leftSize) / totalSize;
+          final aspect = h > w ? h / w : w / h;
+
+          // If worse, make new row/col
+          if (aspect > best) break;
+          best = aspect;
+
+          // Else add to current row/col
+          rightSize -= child.size;
+          leftSize += child.size;
+          left.add(child);
+          i++;
         }
+
+        final Rect leftRect;
+        final Rect rightRect;
+        if (width > height) {
+          leftRect = Rect.fromLTWH(
+            rect.left,
+            rect.top,
+            rect.width * leftSize / totalSize,
+            rect.height,
+          );
+          rightRect = Rect.fromLTRB(
+            leftRect.right, //rect.left + leftRect.width,
+            rect.top,
+            rect.right,
+            rect.bottom,
+          );
+        } else {
+          leftRect = Rect.fromLTWH(
+            rect.left,
+            rect.top,
+            rect.width,
+            rect.height * leftSize / totalSize,
+          );
+          rightRect = Rect.fromLTRB(
+            rect.left,
+            leftRect.bottom, //rect.top + leftRect.height,
+            rect.right,
+            rect.bottom,
+          );
+        }
+
+        {
+          Rect rect = leftRect;
+          final width = rect.width;
+          final height = rect.height;
+
+          for (final child in left) {
+            Rect curr;
+            if (width > height) {
+              curr = Rect.fromLTWH(
+                rect.left,
+                rect.top,
+                width * child.size / leftSize,
+                height,
+              );
+              rect = Rect.fromLTRB(
+                curr.right, //rect.left + curr.width,
+                rect.top,
+                rect.right,
+                rect.bottom,
+              );
+            } else {
+              curr = Rect.fromLTWH(
+                rect.left,
+                rect.top,
+                width,
+                height * child.size / leftSize,
+              );
+              rect = Rect.fromLTRB(
+                rect.left,
+                curr.bottom, //rect.top + curr.height,
+                rect.right,
+                rect.bottom,
+              );
+            }
+            queue.add(QueueEntry(curr, child));
+          }
+        }
+
+        rect = rightRect;
+        totalSize = rightSize;
       }
     }
   }

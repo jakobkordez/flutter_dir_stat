@@ -31,8 +31,7 @@ class FsWalkerDir extends FsWalkerEntity {
   FsWalkerDir({required this.path, required this.dirs, required this.files});
 
   @override
-  late final int size = dirs.fold(0, (acc, dir) => acc + dir.size) +
-      files.fold(0, (acc, file) => acc + file.size);
+  late final int size = children.fold(0, (acc, c) => acc + c.size);
 
   @override
   String toString({int maxDepth = 255, int minSize = 0}) {
