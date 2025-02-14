@@ -28,7 +28,6 @@ class TreeMapPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    canvas.drawRect(rect, Paint()..color = Colors.grey.shade200);
 
     final queue = Queue<QueueEntry>();
     queue.add(QueueEntry(rect, dir));
@@ -42,21 +41,23 @@ class TreeMapPainter extends CustomPainter {
 
       final width = rect.width;
       final height = rect.height;
-      if (width < 1 || height < 1) continue;
+      if (width <= 1 || height <= 1) continue;
 
       if (entity is FsWalkerFile) {
         final ext = entity.name.split('.').last;
+        rect = rect.deflate(1);
         final paint = Paint()
-          ..color = colors[ext.hashCode % colors.length].withAlpha(0xe0);
-        canvas.drawRect(rect.deflate(.5), paint);
-        continue;
-      }
-
-      if (entity is! FsWalkerDir) {
-        final paint = Paint()..color = Colors.black;
+          ..color = colors[ext.hashCode % colors.length].withAlpha(200);
+        canvas.drawRect(rect, paint);
+        paint
+          ..color = colors[ext.hashCode % colors.length]
+          ..strokeWidth = 1
+          ..style = PaintingStyle.stroke;
         canvas.drawRect(rect, paint);
         continue;
       }
+
+      if (entity is! FsWalkerDir) continue;
 
       int totalSize = entity.children.fold(0, (t, e) => t + e.size);
 
@@ -65,6 +66,11 @@ class TreeMapPainter extends CustomPainter {
       while (i < children.length && rect.width > 1 && rect.height > 1) {
         final width = rect.width;
         final height = rect.height;
+
+        if (height * width * children[i].size / totalSize < 4) {
+          canvas.drawRect(rect, Paint()..color = Colors.grey.shade400);
+          break;
+        }
 
         final main = width > height ? width : height;
         final cross = width > height ? height : width;
