@@ -45,12 +45,11 @@ class TreeMapPainter extends CustomPainter {
 
       if (entity is FsWalkerFile) {
         final ext = entity.name.split('.').last;
-        rect = rect.deflate(1);
         final paint = Paint()
           ..color = colors[ext.hashCode % colors.length].withAlpha(200);
         canvas.drawRect(rect, paint);
         paint
-          ..color = colors[ext.hashCode % colors.length]
+          ..color = Colors.white.withAlpha(128)
           ..strokeWidth = 1
           ..style = PaintingStyle.stroke;
         canvas.drawRect(rect, paint);
