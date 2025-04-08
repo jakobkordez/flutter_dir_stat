@@ -18,7 +18,7 @@ class FsWalker {
     Isolate.spawn(_walk, _IsolateParams(_receivePort.sendPort, dir))
         .then((isolate) {
       print('Spawned isolate');
-      return _isolate = isolate;
+      _isolate = isolate;
     });
 
     _receivePort.listen((message) {
@@ -60,7 +60,7 @@ class FsWalker {
     final files = <FsWalkerFile>[];
 
     bool cancelled = false;
-    receivePort.listen((message) {
+    final listener = receivePort.listen((message) {
       print('Got cancelled');
       cancelled = true;
     });
@@ -81,6 +81,7 @@ class FsWalker {
             .then((size) => FsWalkerFile(path: path, size: size)));
       }
     }
+    listener.cancel();
 
     String p = dir.path.replaceAll("\\", "/");
     if (!p.endsWith("/")) p = "$p/";
