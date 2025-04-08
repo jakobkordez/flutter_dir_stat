@@ -36,12 +36,22 @@ class TreeMapPainter extends CustomPainter {
       final entry = queue.removeFirst();
       Rect rect = entry.rect;
       final entity = entry.entity;
+      final depth = entry.depth;
 
       if (rect.hasNaN) continue;
 
       final width = rect.width;
       final height = rect.height;
       if (width <= 1 || height <= 1) continue;
+
+      if (depth == 1) {
+        final paint = Paint()
+          ..color = Colors.black
+          ..strokeWidth = 1
+          ..style = PaintingStyle.stroke;
+        canvas.drawRect(rect, paint);
+        rect = rect.deflate(2);
+      }
 
       if (entity is FsWalkerFile) {
         final ext = entity.name.split('.').last;
@@ -163,7 +173,7 @@ class TreeMapPainter extends CustomPainter {
                 rect.bottom,
               );
             }
-            queue.add(QueueEntry(curr, child));
+            queue.add(QueueEntry(curr, child, depth + 1));
           }
         }
 
@@ -177,8 +187,9 @@ class TreeMapPainter extends CustomPainter {
 class QueueEntry {
   final Rect rect;
   final FsWalkerEntity entity;
+  final int depth;
 
-  QueueEntry(this.rect, this.entity);
+  QueueEntry(this.rect, this.entity, [this.depth = 0]);
 }
 
 final colors = [
